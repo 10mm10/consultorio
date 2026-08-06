@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { obterResumoFinanceiro } from '@/services/api';
+import { obterResumoFinanceiro, listarDespesas } from '@/services/api';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -18,6 +18,7 @@ export default function FinanceiroPage() {
   const [ano, setAno] = useState<number>(new Date().getFullYear());
   const [mes, setMes] = useState<number>(new Date().getMonth() + 1);
   const [tipoFiltro, setTipoFiltro] = useState<'mes' | 'ano'>('mes');
+  const [totalDespesas, setTotalDespesas] = useState(0);
 
   const meses = [
     { valor: 1, nome: 'Janeiro' }, { valor: 2, nome: 'Fevereiro' },
@@ -30,6 +31,7 @@ export default function FinanceiroPage() {
 
   useEffect(() => {
     carregarDados();
+    carregarTotalDespesas();
   }, [mes, ano, tipoFiltro]);
 
   async function carregarDados() {
@@ -49,6 +51,26 @@ export default function FinanceiroPage() {
     }
   }
 
+  async function carregarTotalDespesas() {
+    try {
+      const resDespesas = await listarDespesas(mes, ano);
+      
+      if (Array.isArray(resDespesas) && resDespesas.length > 0) {
+        // Soma estritamente o que está na coluna 'valor' de cada registro retornado
+        const total = resDespesas.reduce((acc: number, curr: any) => {
+          return acc + Number(curr.valor || 0);
+        }, 0);
+
+        setTotalDespesas(total);
+      } else {
+        setTotalDespesas(0);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar despesas:', err);
+      setTotalDespesas(0);
+    }
+  }
+  
   const formatarMoeda = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
   };
@@ -59,7 +81,7 @@ export default function FinanceiroPage() {
       {/* HEADER EXECUTIVO & BOTÃO DE RELATÓRIO EM DESTAQUE */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
         <div>
-           <h1 className="text-2xl font-bold text-gray-800">Dashboard Financeiro</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard Financeiro</h1>
           <p className="text-sm text-slate-500">Dashboard de faturamento e fechamento mensal</p>
         </div>
 
@@ -72,7 +94,6 @@ export default function FinanceiroPage() {
             Voltar ao Painel
           </button>
           <div className="flex items-center bg-slate-100 p-1 rounded-xl">
-
             <button
               onClick={() => setTipoFiltro('mes')}
               className={`cursor-pointer px-3 py-1.5 text-sm font-semibold rounded-lg transition-all ${tipoFiltro === 'mes' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
@@ -112,10 +133,10 @@ export default function FinanceiroPage() {
           {/* O BOTÃO DE RELATÓRIO COM NAVEGAÇÃO /RELATORIOS */}
           <button
             onClick={() => router.push('/relatorios')}
-            className=" cursor-pointer flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95 cursor-pointer"
           >
-            <svg className=" cursor-pointer w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            <span> Relatórios/Fechamentos</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <span>Relatórios/Fechamentos</span>
           </button>
         </div>
       </div>
@@ -145,8 +166,12 @@ export default function FinanceiroPage() {
                 </div>
                 <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Total Faturado</span>
                 <h3 className="text-xl font-black text-slate-900 mt-1">{formatarMoeda(dados?.metricas?.total_faturado || 0)}</h3>
-                <div className="flex items-center gap-1 text-emerald-600 text-sm font-bold mt-1">
+                <div className="flex items-center gap-1 text-emerald-600 text-xs font-bold mt-1">
                   <span>Liquidado no período</span>
+                </div>
+                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Atendimentos</span>
+                  <span className="text-sm font-black text-slate-800">{dados?.metricas?.total_atendimentos || 0}</span>
                 </div>
               </div>
             </div>
@@ -159,18 +184,21 @@ export default function FinanceiroPage() {
                 </div>
                 <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Valores Pendentes</span>
                 <h3 className="text-xl font-black text-slate-900 mt-1">{formatarMoeda(dados?.metricas?.total_pendente || 0)}</h3>
-                <span className="inline-block text-amber-600 text-sm font-bold mt-1">Cliente Pendente</span>
+                <span className="inline-block text-amber-600 text-xs font-bold mt-1">Aguardando recebimento</span>
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
-              <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-50 rounded-full group-hover:scale-125 transition-transform"></div>
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:border-rose-200 transition-all">
+              <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-rose-50 rounded-full group-hover:scale-125 transition-transform"></div>
               <div className="relative z-10">
-                <div className="w-9 h-9 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                <div className="w-9 h-9 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
-                <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Atendimentos Realizados</span>
-                <h3 className="text-xl font-black text-slate-900 mt-1">{dados?.metricas?.total_atendimentos || 0}</h3>
+                <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Total Consultório</span>
+                <h3 className="text-xl font-black text-slate-900 mt-1">
+                  {formatarMoeda(totalDespesas)}
+                </h3>
+                <span className="inline-block text-rose-600 text-xs font-bold mt-1">Porcentagens registradas</span>
               </div>
             </div>
 
@@ -182,7 +210,7 @@ export default function FinanceiroPage() {
                 </div>
                 <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Comissão de Venda</span>
                 <h3 className="text-xl font-black text-slate-900 mt-1">{formatarMoeda(dados?.metricas?.total_comissoes_venda || 0)}</h3>
-                <span className="inline-block text-purple-600 text-sm font-bold mt-1">Repasses de vendas calculados</span>
+                <span className="inline-block text-purple-600 text-xs font-bold mt-1">Repasses de vendas calculados</span>
               </div>
             </div>
 
@@ -191,7 +219,7 @@ export default function FinanceiroPage() {
           {/* SEÇÃO PRINCIPAL DE GRÁFICOS */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-            {/* GRÁFICO DE ÁREA - CURVA DE FATURAMENTO (Altura reduzida para 200px) */}
+            {/* GRÁFICO DE ÁREA - CURVA DE FATURAMENTO */}
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm lg:col-span-2 flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
                 <div>
@@ -234,7 +262,7 @@ export default function FinanceiroPage() {
               </div>
             </div>
 
-            {/* DISTRIBUIÇÃO POR FORMA DE PAGAMENTO (Espaçamento interno menor) */}
+            {/* DISTRIBUIÇÃO POR FORMA DE PAGAMENTO */}
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">Formas de Pagamento</h2>

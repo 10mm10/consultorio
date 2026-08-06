@@ -4,8 +4,8 @@ import { pool } from '../config/database.js';
 export class DespesaController {
   
   // GET /api/despesas?mes=X&ano=Y&profissional_id=Z
-  // GET /api/despesas?mes=X&ano=Y&profissional_id=Z
   async listar(req: Request, res: Response) {
+    console.log('Parâmetros recebidos no backend:', req.query);
     try {
       const { mes, ano, profissional_id } = req.query;
 
@@ -19,37 +19,20 @@ export class DespesaController {
       `;
       const params: any[] = [mes, ano];
 
+      // Se houver profissional_id especificado, filtra por ele. 
+      // Caso contrário, traz todas as despesas do mês/ano para não ocultar registros vinculados.
       if (profissional_id) {
         query += ` AND profissional_id = ? `;
         params.push(profissional_id);
-      } else {
-        query += ` AND profissional_id IS NULL `;
       }
 
       query += ` ORDER BY data DESC, id DESC `;
 
       const [despesas]: any = await pool.query(query, params);
 
-      let queryAtendimentos = `
-        SELECT forma_pagamento, SUM(valor) as total_bruto 
-        FROM atendimentos 
-        WHERE MONTH(data) = ? AND YEAR(data) = ?
-      `;
-      const paramsAtendimentos: any[] = [mes, ano];
-
-      if (profissional_id) {
-        queryAtendimentos += ` AND profissional_id = ? `;
-        paramsAtendimentos.push(profissional_id);
-      }
-
-      queryAtendimentos += ` GROUP BY forma_pagamento `;
-
-      const [atendimentos]: any = await pool.query(queryAtendimentos, paramsAtendimentos);
-
       const totaisPorForma: { [key: string]: number } = {};
       let totalGeralBruto = 0;
 
-      // Função auxiliar para remover acentos e padronizar textos (ex: "Crédito" -> "CREDITO")
       const normalizarTexto = (texto: string) => {
         return texto
           .normalize('NFD')
@@ -58,17 +41,41 @@ export class DespesaController {
           .trim();
       };
 
-      atendimentos.forEach((att: any) => {
-        const forma = att.forma_pagamento ? normalizarTexto(att.forma_pagamento) : '';
-        const valorBruto = Number(att.total_bruto) || 0;
-        totaisPorForma[forma] = (totaisPorForma[forma] || 0) + valorBruto;
-        totalGeralBruto += valorBruto;
-      });
+      // Bloco protegido caso a tabela de atendimentos varie de estrutura
+      try {
+        let queryAtendimentos = `
+          SELECT forma_pagamento, SUM(valor) as total_bruto 
+          FROM atendimentos 
+          WHERE MONTH(data) = ? AND YEAR(data) = ?
+        `;
+        const paramsAtendimentos: any[] = [mes, ano];
+
+        if (profissional_id) {
+          queryAtendimentos += ` AND profissional_id = ? `;
+          paramsAtendimentos.push(profissional_id);
+        }
+
+        queryAtendimentos += ` GROUP BY forma_pagamento `;
+
+        const [atendimentos]: any = await pool.query(queryAtendimentos, paramsAtendimentos);
+
+        atendimentos.forEach((att: any) => {
+          const forma = att.forma_pagamento ? normalizarTexto(att.forma_pagamento) : '';
+          const valorBruto = Number(att.total_bruto) || 0;
+          totaisPorForma[forma] = (totaisPorForma[forma] || 0) + valorBruto;
+          totalGeralBruto += valorBruto;
+        });
+      } catch (attError) {
+        console.warn('Aviso: Coluna de pagamento não encontrada em atendimentos, prosseguindo sem base dinâmica.');
+      }
 
       const despesasCalculadas = despesas.map((despesa: any) => {
         const tipo = despesa.tipo_base ? normalizarTexto(despesa.tipo_base) : 'FIXO';
         const perc = Number(despesa.percentual || 0);
 
+        // AQUI ESTÁ A MUDANÇA:
+        // Se o tipo for FIXO, mantemos o valor original.
+        // Se o tipo não for FIXO, mas o cálculo resultar em 0, mantemos o valor original do banco.
         if (tipo !== 'FIXO' && perc > 0) {
           let baseCalculo = 0;
 
@@ -79,11 +86,17 @@ export class DespesaController {
           }
 
           const valorDinamico = (baseCalculo * perc) / 100;
-          return {
-            ...despesa,
-            valor: Number(valorDinamico.toFixed(2))
-          };
+          
+          // Só retorna o valor calculado se ele for maior que zero
+          if (valorDinamico > 0) {
+            return {
+              ...despesa,
+              valor: Number(valorDinamico.toFixed(2))
+            };
+          }
         }
+        
+        // Retorna o objeto exatamente como veio do banco (preservando o 160.00)
         return despesa;
       });
 

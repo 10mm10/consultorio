@@ -344,7 +344,7 @@ async function carregarListaClientes() {
     try {
       const token = localStorage.getItem('@consultorio:token');
 
-      let url = `NEXT_PUBLIC_API_URL/relatorios/cliente?cliente_id=${clienteId}`;
+      let url = `${process.env.NEXT_PUBLIC_API_URL}/relatorios/cliente?cliente_id=${clienteId}`;
       if (modoHistoricoCliente) {
         url += `&historico_geral=true`;
       } else {
@@ -1192,7 +1192,7 @@ async function carregarListaClientes() {
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between space-y-4">
                     <div className="flex justify-between items-center pb-3 border-b border-gray-100">
                       <div>
-                        <span className="text-sm font-bold text-rose-500 uppercase tracking-wider">Despesas / Descontos Variáveis</span>
+                        <span className="text-sm font-bold text-blue-600 uppercase tracking-wider">Taxas Consultório</span>
                         <p className="text-2xl font-extrabold text-rose-600 mt-1">{formatarMoeda(totalDespesas)}</p>
                       </div>
                       {!isPeriodoPassado && (
@@ -1200,7 +1200,7 @@ async function carregarListaClientes() {
                           onClick={abrirModalCriacao}
                           className="bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-semibold px-4 py-2.5 rounded-xl transition border border-rose-200 cursor-pointer"
                         >
-                          + Lançar Despesa
+                          + Lançar Taxas
                         </button>
                       )}
                     </div>
@@ -1216,14 +1216,17 @@ async function carregarListaClientes() {
                                 <p className="font-medium text-sm text-gray-800">{d.descricao}</p>
                               </div>
                               <div className="flex items-center gap-3">
-                                <span className="text-sm font-mono text-rose-600 font-semibold">{formatarMoeda(d.valor)}</span>
-                                {!isPeriodoPassado && (
-                                  <div className="space-x-1">
-                                    <button onClick={() => abrirModalEdicao(d)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-xs font-medium transition border border-gray-300 cursor-pointer">Editar</button>
-                                    <button onClick={() => handleExcluir(d.id)} className="bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded text-xs font-medium transition border border-red-200 cursor-pointer">Excluir</button>
-                                  </div>
-                                )}
-                              </div>
+                              <span className="text-sm font-mono text-rose-600 font-semibold">
+                                {Number(d.percentual) > 0 ? `(${Number(d.percentual)}%) ` : ''}
+                                {formatarMoeda(d.valor)}
+                              </span>
+                              {!isPeriodoPassado && (
+                                <div className="space-x-1">
+                                  <button onClick={() => abrirModalEdicao(d)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-xs font-medium transition border border-gray-300 cursor-pointer">Editar</button>
+                                  <button onClick={() => handleExcluir(d.id)} className="bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded text-xs font-medium transition border border-red-200 cursor-pointer">Excluir</button>
+                                </div>
+                              )}
+                            </div>
                             </div>
                           ))}
                         </div>

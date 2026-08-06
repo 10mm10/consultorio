@@ -268,12 +268,20 @@ async function carregarListaClientes() {
       const brutoTotalAtualizado = Math.max(0, calcBrutoDinheiro) + Math.max(0, calcBrutoCredito) + Math.max(0, calcBrutoDebito) + Math.max(0, calcBrutoPix);
 
       // Processa e recalcula as despesas vindas do backend no front-end para garantir o reflexo visual imediato
+      // Processa e recalcula as despesas vindas do backend no front-end
       const listaDespesasBrutas = res?.despesas || [];
+      
+      let taxaDescontoCredito = 0;
+      let taxaDescontoDebito = 0;
+      let taxaDescontoPix = 0;
+      let taxaDescontoDinheiro = 0;
+
       const despesasProcessadas = listaDespesasBrutas.map((d: any) => {
         let valorCalculado = Number(d.valor || 0);
         const tipo = (d.tipo_base || 'FIXO').toUpperCase();
         const perc = Number(d.percentual || 0);
 
+        // SE HOUVER PORCENTAGEM CADASTRADA NO MODAL, CALCULA INDEPENDENTE DO NOME
         if (tipo !== 'FIXO' && perc > 0) {
           let baseCalculo = 0;
           if (tipo === 'CREDITO') baseCalculo = Math.max(0, calcBrutoCredito);
@@ -283,6 +291,12 @@ async function carregarListaClientes() {
 
           valorCalculado = Number(((baseCalculo * perc) / 100).toFixed(2));
         }
+
+        // Acumula para o card correspondente com base no tipo selecionado no modal
+        if (tipo === 'CREDITO') taxaDescontoCredito += valorCalculado;
+        else if (tipo === 'DEBITO') taxaDescontoDebito += valorCalculado;
+        else if (tipo === 'PIX') taxaDescontoPix += valorCalculado;
+        else if (tipo === 'DINHEIRO') taxaDescontoDinheiro += valorCalculado;
 
         return {
           ...d,
@@ -298,18 +312,21 @@ async function carregarListaClientes() {
         total_indicacoes: qtdIndicacoes,
         clientes_atendidos: clientesProcessados,
         atendimentos: atendimentosFiltrados,
-        // Atribui os brutos limpos
         bruto_dinheiro: Math.max(0, calcBrutoDinheiro),
         bruto_credito: Math.max(0, calcBrutoCredito),
         bruto_debito: Math.max(0, calcBrutoDebito),
         bruto_pix: Math.max(0, calcBrutoPix),
-        // Injeta as comissões separadas para os cards
+        
+        taxa_dinheiro: taxaDescontoDinheiro,
+        taxa_credito: taxaDescontoCredito,
+        taxa_debito: taxaDescontoDebito,
+        taxa_pix: taxaDescontoPix,
+
         comissao_dinheiro: calcComissaoDinheiro,
         comissao_credito: calcComissaoCredito,
         comissao_debito: calcComissaoDebito,
         comissao_pix: calcComissaoPix,
-        valor_total_comissoes: calcValorTotalComissoes, // <--- Corrigido para a variável correta
-        // Injeta as despesas e o total atualizados
+        valor_total_comissoes: calcValorTotalComissoes,
         despesas: despesasProcessadas,
         total_despesas: totalDespesasCalculado
       });
@@ -505,17 +522,21 @@ async function carregarListaClientes() {
   let totalDescontoCredito = 0;
   let totalDescontoDebito = 0;
   let totalDescontoPix = 0;
+  let totalDescontoDinheiro = 0;
 
   if (dadosRelatorio?.despesas) {
     dadosRelatorio.despesas.forEach((d: any) => {
-      const desc = (d.descricao || '').toLowerCase();
-      if (desc.includes('crédito') || desc.includes('credito')) totalDescontoCredito += Number(d.valor || 0);
-      else if (desc.includes('débito') || desc.includes('debito')) totalDescontoDebito += Number(d.valor || 0);
-      else if (desc.includes('pix')) totalDescontoPix += Number(d.valor || 0);
+      const tipo = (d.tipo_base || '').toUpperCase();
+      const valorDespesaItem = Number(d.valor || 0);
+
+      if (tipo === 'CREDITO') totalDescontoCredito += valorDespesaItem;
+      else if (tipo === 'DEBITO') totalDescontoDebito += valorDespesaItem;
+      else if (tipo === 'PIX') totalDescontoPix += valorDespesaItem;
+      else if (tipo === 'DINHEIRO') totalDescontoDinheiro += valorDespesaItem;
     });
   }
 
-  // Mapeamento das taxas para alimentar o componente visual
+  // Mapeamento das taxas baseado puramente no tipo selecionado no modal (tipo_base)
   const taxaPixValor = totalDescontoPix;
   const taxaDebitoValor = totalDescontoDebito;
   const taxaCreditoValor = totalDescontoCredito;
@@ -690,7 +711,8 @@ async function carregarListaClientes() {
   function formatarMoeda(valor: number) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
   }
-
+  
+  
   return (
     <div className="min-h-screen bg-transparent p-6">
       <div className="max-w-6xl mx-auto space-y-6">

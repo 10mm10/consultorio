@@ -3,82 +3,6 @@ import { pool } from '../config/database.js';
 
 export class RelatorioController {
 
-  // POST /api/relatorios/despesas (ou a rota que salva a despesa do profissional)
-  async criarDespesaProfissional(req: Request, res: Response) {
-    try {
-      const { descricao, valor, data, mes, ano, profissional_id } = req.body;
-
-      if (!descricao || !valor || !mes || !ano || !profissional_id) {
-        return res.status(400).json({ error: 'Todos os campos, incluindo o profissional_id, são obrigatórios.' });
-      }
-
-      const query = `
-        INSERT INTO despesas (descricao, valor, data, mes, ano, profissional_id) 
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
-
-      const dataDespesa = data || new Date().toISOString().split('T')[0];
-      const values = [descricao, valor, dataDespesa, mes, ano, profissional_id];
-      
-      const [result]: any = await pool.query(query, values);
-
-      return res.status(201).json({
-        message: 'Despesa do profissional salva com sucesso!',
-        id: result.insertId
-      });
-    } catch (error: any) {
-      console.error('Erro ao salvar despesa do profissional:', error);
-      return res.status(500).json({ error: 'Erro ao salvar despesa.', details: error.message || error });
-    }
-  }
-
-  // PUT /api/relatorios/despesas/:id (Editar despesa do profissional)
-  async atualizarDespesaProfissional(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const { descricao, valor, data } = req.body;
-
-      if (!descricao || !valor) {
-        return res.status(400).json({ error: 'Descrição e valor são obrigatórios.' });
-      }
-
-      const query = `
-        UPDATE despesas 
-        SET descricao = ?, valor = ?, data = COALESCE(?, data)
-        WHERE id = ?
-      `;
-
-      const [result]: any = await pool.query(query, [descricao, valor, data || null, id]);
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Despesa não encontrada.' });
-      }
-
-      return res.json({ message: 'Despesa atualizada com sucesso!' });
-    } catch (error: any) {
-      console.error('Erro ao atualizar despesa:', error);
-      return res.status(500).json({ error: 'Erro ao atualizar despesa.', details: error.message || error });
-    }
-  }
-
-  // DELETE /api/relatorios/despesas/:id (Excluir despesa do profissional)
-  async deletarDespesaProfissional(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-
-      const [result]: any = await pool.query('DELETE FROM despesas WHERE id = ?', [id]);
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Despesa não encontrada.' });
-      }
-
-      return res.json({ message: 'Despesa excluída com sucesso!' });
-    } catch (error: any) {
-      console.error('Erro ao excluir despesa do profissional:', error);
-      return res.status(500).json({ error: 'Erro ao excluir despesa.', details: error.message || error });
-    }
-  }
-
   // GET /api/relatorios/cliente?cliente_id=X&mes=Y&ano=Z
   async obterRelatorioCliente(req: Request, res: Response) {
     try {
@@ -150,7 +74,7 @@ export class RelatorioController {
     }
   }
 
-  // GET /api/relatorios/profissional?profissional_id=X&mes=Y&ano=Z (ou historico_geral=true)
+  // GET /api/relatorios/profissional?profissional_id=X&mes=Y&ano=Z
   async obterRelatorioProfissional(req: Request, res: Response) {
     try {
       const { profissional_id, mes, ano, historico_geral } = req.query;
@@ -159,7 +83,6 @@ export class RelatorioController {
         return res.status(400).json({ error: 'O parâmetro "profissional_id" é obrigatório.' });
       }
 
-      // 1. Monta a query de atendimentos permitindo histórico geral ou filtro por mês/ano
       let queryAtendimentos = `
         SELECT 
           id,
@@ -177,7 +100,6 @@ export class RelatorioController {
       
       const queryParams: any[] = [profissional_id, profissional_id];
 
-      // Se não for histórico geral e possuir mês e ano, restringe o período
       if (historico_geral !== 'true' && mes && ano) {
         queryAtendimentos += ` AND MONTH(data_atendimento) = ? AND YEAR(data_atendimento) = ?`;
         queryParams.push(mes, ano);
@@ -209,7 +131,6 @@ export class RelatorioController {
           totalAtendimentos += 1;
         }
 
-        // Acumular dados do cliente
         if (atend.cliente_id) {
           if (!clientesMap[atend.cliente_id]) {
             const [cliRows]: any = await pool.query(
@@ -234,7 +155,6 @@ export class RelatorioController {
       const clientesAtendidos = Object.values(clientesMap);
       const valorTotalComissoes = totalComissoesExec + totalComissoesVenda;
 
-      // 2. Buscar pagamentos por forma
       let brutoDinheiro = 0;
       let brutoPix = 0;
       let brutoDebito = 0;
@@ -262,7 +182,6 @@ export class RelatorioController {
 
       const brutoTotalPeriodo = brutoDinheiro + brutoPix + brutoDebito + brutoCredito;
 
-      // 3. Buscar despesas variáveis com suporte a regras dinâmicas percentuais
       let queryDespesas = `
         SELECT id, descricao, valor, data, percentual, tipo_base 
         FROM despesas 
@@ -281,9 +200,13 @@ export class RelatorioController {
       
       const despesas = rowsDespesas.map((d: any) => {
         let valorCalculado = Number(d.valor || 0);
-        const tipo = (d.tipo_base || 'FIXO').toUpperCase();
+        let tipo = (d.tipo_base || 'FIXO').toUpperCase();
         const perc = Number(d.percentual || 0);
 
+        // FALLBACK DE SEGURANÇA: Se o tipo_base veio como FIXO/vazio mas o usuário preencheu 
+        // a porcentagem, tentamos adivinhar pelo nome OU assumimos CREDITO se tiver % e nome genérico.
+        // Mas o ideal é olhar o tipo_base salvo. Se o tipo_base estiver correto:
+        
         if (tipo !== 'FIXO' && perc > 0) {
           let baseCalculo = 0;
           if (tipo === 'CREDITO') baseCalculo = brutoCredito;
@@ -291,6 +214,11 @@ export class RelatorioController {
           else if (tipo === 'PIX') baseCalculo = brutoPix;
           else if (tipo === 'TOTAL') baseCalculo = brutoTotalPeriodo;
 
+          valorCalculado = Number(((baseCalculo * perc) / 100).toFixed(2));
+        } else if (perc > 0 && (tipo === 'FIXO' || !tipo)) {
+          // Se por acaso salvou como FIXO mas tem %, vamos aplicar no Crédito por padrão ou Total
+          tipo = 'CREDITO'; 
+          let baseCalculo = brutoCredito;
           valorCalculado = Number(((baseCalculo * perc) / 100).toFixed(2));
         }
 
@@ -302,7 +230,6 @@ export class RelatorioController {
           tipo_base: d.tipo_base
         };
       });
-
       const totalDespesas = despesas.reduce((acc: number, curr: any) => acc + curr.valor, 0);
 
       return res.json({

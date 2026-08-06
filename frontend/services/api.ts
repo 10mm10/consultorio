@@ -234,13 +234,30 @@ export async function listarDespesas(mes: number, ano: number) {
 }
 
 export async function criarDespesa(dados: any) {
+  // Padroniza o tipo_base antes de enviar para o backend
+  const payload = {
+    ...dados,
+    tipo_base: dados.tipo_base ? dados.tipo_base.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : 'FIXO'
+  };
+
   const response = await fetch(`${API_URL}/despesas`, {
     method: 'POST',
     headers: getAuthHeader(),
-    body: JSON.stringify(dados),
+    body: JSON.stringify(payload),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao cadastrar despesa');
+  return data;
+}
+
+export async function deletarDespesaProfissional(id: number) {
+  const response = await fetch(`${API_URL}/despesas/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader()
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao excluir despesa');
   return data;
 }
 
@@ -264,9 +281,9 @@ export async function salvarDespesaProfissional(dados: {
   tipo_base?: string; 
   data?: string 
 }) {
-  // Garante uma data padrão caso venha vazia (ex: dia 01 do mês selecionado)
   const payload = {
     ...dados,
+    tipo_base: dados.tipo_base ? dados.tipo_base.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : 'FIXO',
     data: dados.data || `${dados.ano}-${String(dados.mes).padStart(2, '0')}-01`
   };
 
@@ -291,25 +308,19 @@ export async function atualizarDespesaProfissional(id: number, dados: {
   ano?: number;
   profissional_id?: number;
 }) {
+  const payload = {
+    ...dados,
+    tipo_base: dados.tipo_base ? dados.tipo_base.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : 'FIXO'
+  };
+
   const response = await fetch(`${API_URL}/despesas/${id}`, {
     method: 'PUT',
     headers: getAuthHeader(),
-    body: JSON.stringify(dados)
+    body: JSON.stringify(payload)
   });
 
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Erro ao atualizar despesa');
-  return data;
-}
-
-export async function deletarDespesaProfissional(id: number) {
-  const response = await fetch(`${API_URL}/despesas/${id}`, {
-    method: 'DELETE',
-    headers: getAuthHeader()
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Erro ao excluir despesa');
   return data;
 }
 

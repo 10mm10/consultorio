@@ -88,10 +88,10 @@ router.delete('/despesas/:id', authMiddleware, despesaController.deletar);
 router.get('/relatorios/profissional', authMiddleware, relatorioController.obterRelatorioProfissional);
 router.get('/relatorios/cliente', authMiddleware, (req, res) => relatorioController.obterRelatorioCliente(req, res)); // <-- ADICIONADO AQUI
 
-// Rotas Protegidas - Despesas de Profissionais
-router.post('/relatorios/despesas', authMiddleware, relatorioController.criarDespesaProfissional);
-router.put('/relatorios/despesas/:id', authMiddleware, relatorioController.atualizarDespesaProfissional);
-router.delete('/relatorios/despesas/:id', authMiddleware, relatorioController.deletarDespesaProfissional);
+// Rotas Protegidas - Relatórios (Profissional e Cliente)
+router.get('/relatorios/profissional', authMiddleware, relatorioController.obterRelatorioProfissional);
+router.get('/relatorios/cliente', authMiddleware, (req, res) => relatorioController.obterRelatorioCliente(req, res));
+
 
 
 

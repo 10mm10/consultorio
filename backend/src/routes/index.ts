@@ -79,6 +79,7 @@ router.put('/profissionais/:id', authMiddleware, profissionalController.atualiza
 router.delete('/profissionais/:id', authMiddleware, profissionalController.excluir);
 
 // Rotas Protegidas - Despesas do Consultório
+router.put('/despesas/:id', authMiddleware, despesaController.atualizar);
 router.get('/despesas', authMiddleware, despesaController.listar);
 router.post('/despesas', authMiddleware, despesaController.criar);
 router.delete('/despesas/:id', authMiddleware, despesaController.deletar);

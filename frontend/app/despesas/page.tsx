@@ -15,9 +15,11 @@ export default function DespesasPage() {
   const [despesas, setDespesas] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  // Estados do formulário de cadastro
+  // Estados do formulário de cadastro atualizados
   const [descricao, setDescricao] = useState('');
+  const [tipoBase, setTipoBase] = useState('FIXO'); // 'FIXO', 'TOTAL', 'PIX', 'DEBITO', 'CREDITO'
   const [valor, setValor] = useState('');
+  const [percentual, setPercentual] = useState('');
   const [data, setData] = useState(hoje.toISOString().split('T')[0]);
   const [salvando, setSalvando] = useState(false);
 
@@ -61,13 +63,15 @@ export default function DespesasPage() {
 
   async function handleSalvar(e: React.FormEvent) {
     e.preventDefault();
-    if (!descricao || !valor || !data) return;
+    if (!descricao || !data) return;
 
     setSalvando(true);
     try {
       await criarDespesa({
         descricao,
-        valor: Number(valor),
+        valor: tipoBase === 'FIXO' ? Number(valor || 0) : 0,
+        percentual: tipoBase !== 'FIXO' ? Number(percentual || 0) : 0,
+        tipo_base: tipoBase,
         data,
         mes,
         ano
@@ -75,6 +79,9 @@ export default function DespesasPage() {
 
       setDescricao('');
       setValor('');
+      setPercentual('');
+      setTipoBase('FIXO');
+      toast.success('Despesa cadastrada com sucesso!');
       await carregarDados();
     } catch (err) {
       toast.error('Não foi possível cadastrar a despesa.');
@@ -88,6 +95,7 @@ export default function DespesasPage() {
 
     try {
       await excluirDespesa(id);
+      toast.success('Despesa excluída com sucesso!');
       await carregarDados();
     } catch (err) {
       toast.error('Erro ao remover despesa.');
@@ -108,7 +116,7 @@ export default function DespesasPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Despesas do Consultório</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Lançamento de custos fixos e variáveis mensais</p>
+            <p className="text-sm text-gray-500 mt-0.5">Lançamento de custos fixos e taxas variáveis dinâmicas</p>
           </div>
           <button
             onClick={() => router.push('/dashboard')}
@@ -118,16 +126,16 @@ export default function DespesasPage() {
           </button>
         </div>
 
-        {/* Formulário de Cadastro */}
+        {/* Formulário de Cadastro Atualizado */}
         <form onSubmit={handleSalvar} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-4">
-          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Nova Despesa</h2>
+          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Nova Despesa / Taxa</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-5">
+            <div className="md:col-span-4">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Descrição</label>
               <input
                 type="text"
-                placeholder="Ex: Aluguel, Água, Luz, Insumos"
+                placeholder="Ex: Aluguel, Taxa de Crédito, Insumos"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
                 required
@@ -136,17 +144,47 @@ export default function DespesasPage() {
             </div>
 
             <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Valor (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="0,00"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                required
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Tipo de Cálculo</label>
+              <select
+                value={tipoBase}
+                onChange={(e) => setTipoBase(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 outline-none bg-gray-50/50"
-              />
+              >
+                <option value="FIXO">Valor Fixo (R$)</option>
+                <option value="CREDITO">% em cima do Crédito</option>
+                <option value="DEBITO">% em cima do Débito</option>
+                <option value="PIX">% em cima do PIX</option>
+                <option value="TOTAL">% em cima do Bruto Total</option>
+              </select>
             </div>
+
+            {tipoBase === 'FIXO' ? (
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Valor (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={valor}
+                  onChange={(e) => setValor(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 outline-none bg-gray-50/50"
+                />
+              </div>
+            ) : (
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Porcentagem (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Ex: 5.00"
+                  value={percentual}
+                  onChange={(e) => setPercentual(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 outline-none bg-gray-50/50"
+                />
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Data</label>
@@ -159,13 +197,13 @@ export default function DespesasPage() {
               />
             </div>
 
-            <div className="md:col-span-2 flex justify-end">
+            <div className="md:col-span-1 flex justify-end">
               <button
                 type="submit"
                 disabled={salvando}
                 className="w-full bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-sm disabled:opacity-50"
               >
-                {salvando ? 'Salvando...' : 'Adicionar'}
+                {salvando ? '...' : 'Adicionar'}
               </button>
             </div>
           </div>
@@ -212,16 +250,23 @@ export default function DespesasPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50/75 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <th className="p-4">Descrição</th>
+                    <th className="p-4">Descrição / Regra</th>
                     <th className="p-4">Data</th>
-                    <th className="p-4 text-right">Valor</th>
+                    <th className="p-4 text-right">Valor Calculado</th>
                     <th className="p-4 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {despesas.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50/50 transition">
-                      <td className="p-4 font-medium text-gray-800">{item.descricao}</td>
+                      <td className="p-4 font-medium text-gray-800">
+                        {item.descricao}
+                        {item.tipo_base && item.tipo_base !== 'FIXO' && (
+                          <span className="ml-2 text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full border border-purple-100">
+                            {item.percentual}% sobre {item.tipo_base}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4 text-gray-500 text-xs">
                         {item.data ? new Date(item.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}
                       </td>

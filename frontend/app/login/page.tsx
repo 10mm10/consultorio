@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { loginRequest, alterarSenhaObrigatoria } from '@/services/api';
 import { toast } from 'sonner';
 
-
 export default function LoginPage() {
   const router = useRouter();
   const [identificador, setIdentificador] = useState(''); // Aceita e-mail ou nome
@@ -17,6 +16,7 @@ export default function LoginPage() {
   const [modalTrocaObrigatoria, setModalTrocaObrigatoria] = useState(false);
   const [userIdLogado, setUserIdLogado] = useState<number | null>(null);
   const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarNovaSenha, setConfirmarNovaSenha] = useState('');
   const [erroSenhaModal, setErroSenhaModal] = useState('');
   const [carregandoSenha, setCarregandoSenha] = useState(false);
 
@@ -52,40 +52,43 @@ export default function LoginPage() {
 
   // Função para validar e salvar a nova senha definitiva
   async function handleSalvarNovaSenha(e: React.FormEvent) {
-  e.preventDefault();
-  setErroSenhaModal('');
+    e.preventDefault();
+    setErroSenhaModal('');
 
-  const regex = /^(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
-  if (!regex.test(novaSenha)) {
-    setErroSenhaModal('A senha deve ter no mínimo 8 caracteres, contendo pelo menos uma letra maiúscula e um símbolo.');
-    return;
+    // Validação se as senhas conferem
+    if (novaSenha !== confirmarNovaSenha) {
+      setErroSenhaModal('As senhas digitadas não conferem.');
+      return;
+    }
+
+    const regex = /^(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+    if (!regex.test(novaSenha)) {
+      setErroSenhaModal('A senha deve ter no mínimo 8 caracteres, contendo pelo menos uma letra maiúscula e um símbolo.');
+      return;
+    }
+
+    try {
+      setCarregandoSenha(true);
+      await alterarSenhaObrigatoria(userIdLogado!, novaSenha);
+      
+      const usuarioAtual = {
+        id: userIdLogado,
+        nome: identificador,
+        must_change_password: false
+      };
+      
+      localStorage.setItem('@consultorio:user', JSON.stringify(usuarioAtual));
+
+      toast.success('Senha alterada com sucesso! Bem-vindo ao sistema.');
+      setModalTrocaObrigatoria(false);
+
+      router.push('/dashboard');
+    } catch (err: any) {
+      setErroSenhaModal(err.message || 'Erro ao alterar senha.');
+    } finally {
+      setCarregandoSenha(false);
+    }
   }
-
-  try {
-    setCarregandoSenha(true);
-    await alterarSenhaObrigatoria(userIdLogado!, novaSenha);
-    
-    // 💡 SOLUÇÃO: Como alterou com sucesso, salvamos o usuário no storage antes de entrar
-    // Se o backend já tinha te retornado no login anterior, podemos guardar o nome ou buscar/montar o objeto básico
-    const usuarioAtual = {
-      id: userIdLogado,
-      nome: identificador, // ou o nome que veio na resposta do login
-      must_change_password: false
-    };
-    
-    // Garantimos que o storage tenha os dados para o dashboard ler o nome
-    localStorage.setItem('@consultorio:user', JSON.stringify(usuarioAtual));
-
-    toast.success('Senha alterada com sucesso! Bem-vindo ao sistema.');
-    setModalTrocaObrigatoria(false);
-
-    router.push('/dashboard');
-  } catch (err: any) {
-    setErroSenhaModal(err.message || 'Erro ao alterar senha.');
-  } finally {
-    setCarregandoSenha(false);
-  }
-}
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-transparent">
@@ -120,7 +123,6 @@ export default function LoginPage() {
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-xs font-semibold text-gray-700">Senha</label>
-              {/* Botão de Esqueci a Senha integrado com seus dados de contato */}
               <button
                 type="button"
                 onClick={() => toast.success('Entre em contato para redefinir sua senha: (41) 99761-8970 - Moisés Pimentel')}
@@ -181,6 +183,21 @@ export default function LoginPage() {
                   placeholder="Ex: Senha@123"
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-rose-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Confirme a Nova Senha</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmarNovaSenha}
+                  onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                  placeholder="Ex: Senha@123"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                {confirmarNovaSenha && novaSenha !== confirmarNovaSenha && (
+                  <p className="mt-1 text-[11px] text-red-600 font-medium">As senhas não coincidem.</p>
+                )}
               </div>
 
               {erroSenhaModal && (

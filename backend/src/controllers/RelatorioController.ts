@@ -121,9 +121,9 @@ export class RelatorioController {
 
         const [itens]: any = await pool.query(
           `SELECT ai.quantidade, ai.valor_unitario, ai.valor_total, p.nome 
-           FROM atendimento_itens ai 
-           LEFT JOIN procedimentos p ON ai.item_id = p.id 
-           WHERE ai.atendimento_id = ?`,
+            FROM atendimento_itens ai 
+            LEFT JOIN procedimentos p ON ai.item_id = p.id 
+            WHERE ai.atendimento_id = ?`,
           [atend.id]
         );
 
@@ -260,9 +260,11 @@ export class RelatorioController {
         });
       }
 
-      // 3. Buscar despesas variáveis (se for histórico geral, podemos trazer todas ou filtrar caso mes/ano estejam presentes)
+      const brutoTotalPeriodo = brutoDinheiro + brutoPix + brutoDebito + brutoCredito;
+
+      // 3. Buscar despesas variáveis com suporte a regras dinâmicas percentuais
       let queryDespesas = `
-        SELECT id, descricao, valor, data 
+        SELECT id, descricao, valor, data, percentual, tipo_base 
         FROM despesas 
         WHERE profissional_id = ?
       `;
@@ -277,11 +279,29 @@ export class RelatorioController {
 
       const [rowsDespesas]: any = await pool.query(queryDespesas, queryDespesasParams);
       
-      const despesas = rowsDespesas.map((d: any) => ({
-        id: d.id,
-        descricao: d.descricao,
-        valor: Number(d.valor || 0)
-      }));
+      const despesas = rowsDespesas.map((d: any) => {
+        let valorCalculado = Number(d.valor || 0);
+        const tipo = (d.tipo_base || 'FIXO').toUpperCase();
+        const perc = Number(d.percentual || 0);
+
+        if (tipo !== 'FIXO' && perc > 0) {
+          let baseCalculo = 0;
+          if (tipo === 'CREDITO') baseCalculo = brutoCredito;
+          else if (tipo === 'DEBITO') baseCalculo = brutoDebito;
+          else if (tipo === 'PIX') baseCalculo = brutoPix;
+          else if (tipo === 'TOTAL') baseCalculo = brutoTotalPeriodo;
+
+          valorCalculado = Number(((baseCalculo * perc) / 100).toFixed(2));
+        }
+
+        return {
+          id: d.id,
+          descricao: d.descricao,
+          valor: valorCalculado,
+          percentual: d.percentual,
+          tipo_base: d.tipo_base
+        };
+      });
 
       const totalDespesas = despesas.reduce((acc: number, curr: any) => acc + curr.valor, 0);
 

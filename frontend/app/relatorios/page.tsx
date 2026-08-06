@@ -123,10 +123,12 @@ export default function RelatoriosPage() {
     }
   }
 
-  async function carregarListaClientes() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+async function carregarListaClientes() {
     try {
       const token = localStorage.getItem('@consultorio:token');
-      const response = await fetch('http://localhost:3006/api/clientes', {
+      const response = await fetch(`${API_URL}/clientes`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -262,13 +264,41 @@ export default function RelatoriosPage() {
 
       const clientesProcessados = Object.values(mapaClientesProcessados);
 
+      // Recalcula o bruto total atualizado após os ajustes de indicação
+      const brutoTotalAtualizado = Math.max(0, calcBrutoDinheiro) + Math.max(0, calcBrutoCredito) + Math.max(0, calcBrutoDebito) + Math.max(0, calcBrutoPix);
+
+      // Processa e recalcula as despesas vindas do backend no front-end para garantir o reflexo visual imediato
+      const listaDespesasBrutas = res?.despesas || [];
+      const despesasProcessadas = listaDespesasBrutas.map((d: any) => {
+        let valorCalculado = Number(d.valor || 0);
+        const tipo = (d.tipo_base || 'FIXO').toUpperCase();
+        const perc = Number(d.percentual || 0);
+
+        if (tipo !== 'FIXO' && perc > 0) {
+          let baseCalculo = 0;
+          if (tipo === 'CREDITO') baseCalculo = Math.max(0, calcBrutoCredito);
+          else if (tipo === 'DEBITO') baseCalculo = Math.max(0, calcBrutoDebito);
+          else if (tipo === 'PIX') baseCalculo = Math.max(0, calcBrutoPix);
+          else if (tipo === 'TOTAL') baseCalculo = brutoTotalAtualizado;
+
+          valorCalculado = Number(((baseCalculo * perc) / 100).toFixed(2));
+        }
+
+        return {
+          ...d,
+          valor: valorCalculado
+        };
+      });
+
+      const totalDespesasCalculado = despesasProcessadas.reduce((acc: number, curr: any) => acc + curr.valor, 0);
+
       setDadosRelatorio({
         ...res,
         total_atendimentos: qtdExecucoes,
         total_indicacoes: qtdIndicacoes,
         clientes_atendidos: clientesProcessados,
         atendimentos: atendimentosFiltrados,
-        // Atribui os brutos limpos (sem o valor total da indicação somado indevidamente)
+        // Atribui os brutos limpos
         bruto_dinheiro: Math.max(0, calcBrutoDinheiro),
         bruto_credito: Math.max(0, calcBrutoCredito),
         bruto_debito: Math.max(0, calcBrutoDebito),
@@ -278,7 +308,10 @@ export default function RelatoriosPage() {
         comissao_credito: calcComissaoCredito,
         comissao_debito: calcComissaoDebito,
         comissao_pix: calcComissaoPix,
-        valor_total_comissoes: calcValorTotalComissoes
+        valor_total_comissoes: calcValorTotalComissoes, // <--- Corrigido para a variável correta
+        // Injeta as despesas e o total atualizados
+        despesas: despesasProcessadas,
+        total_despesas: totalDespesasCalculado
       });
     } catch (err) {
       console.error('Erro ao buscar relatório do profissional:', err);
@@ -288,14 +321,13 @@ export default function RelatoriosPage() {
     }
   }
 
-
   async function buscarRelatorioCliente() {
     if (!clienteId) return;
     setCarregando(true);
     try {
       const token = localStorage.getItem('@consultorio:token');
 
-      let url = `http://localhost:3006/api/relatorios/cliente?cliente_id=${clienteId}`;
+      let url = `NEXT_PUBLIC_API_URL/relatorios/cliente?cliente_id=${clienteId}`;
       if (modoHistoricoCliente) {
         url += `&historico_geral=true`;
       } else {
@@ -391,7 +423,7 @@ export default function RelatoriosPage() {
 
       if (tipoRelatorio === 'profissional') {
         if (!profissionalId) return;
-        url = `http://localhost:3006/api/notas-fiscais/simular?profissional_id=${profissionalId}`;
+        url = `NEXT_PUBLIC_API_URL/notas-fiscais/simular?profissional_id=${profissionalId}`;
         if (!modoHistoricoProfissional) {
           if (mes !== null) url += `&mes=${mes}`;
           if (ano !== null) url += `&ano=${ano}`;
@@ -401,7 +433,7 @@ export default function RelatoriosPage() {
         }
       } else {
         if (!clienteId) return;
-        url = `http://localhost:3006/api/notas-fiscais-clientes/simular?cliente_id=${clienteId}`;
+        url = `NEXT_PUBLIC_API_URL/notas-fiscais-clientes/simular?cliente_id=${clienteId}`;
         if (!modoHistoricoCliente) {
           if (mes !== null) url += `&mes=${mes}`;
           if (ano !== null) url += `&ano=${ano}`;
@@ -442,7 +474,7 @@ export default function RelatoriosPage() {
       if (!clienteId || !atend?.data_atendimento) return;
 
       const [anoAtend, mesAtend, diaAtend] = atend.data_atendimento.split('T')[0].split('-');
-      const url = `http://localhost:3006/api/notas-fiscais-clientes/simular?cliente_id=${clienteId}&mes=${Number(mesAtend)}&ano=${Number(anoAtend)}&dia=${Number(diaAtend)}`;
+      const url = `NEXT_PUBLIC_API_URL/notas-fiscais-clientes/simular?cliente_id=${clienteId}&mes=${Number(mesAtend)}&ano=${Number(anoAtend)}&dia=${Number(diaAtend)}`;
 
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
       if (response.status === 401) {
@@ -494,14 +526,31 @@ export default function RelatoriosPage() {
   const liquidoCredito = Math.max(0, brutoCredito - taxaCreditoValor);
   const valorLiquido = valorBruto - totalDespesas;
 
-  function calcularValorComPorcentagens(pTotal: string, pCred: string, pDeb: string, pPix: string) {
-    let totalCalculado = 0;
-    if (pTotal !== '' && !isNaN(Number(pTotal))) totalCalculado += (valorBruto * Number(pTotal)) / 100;
-    if (pCred !== '' && !isNaN(Number(pCred))) totalCalculado += (brutoCredito * Number(pCred)) / 100;
-    if (pDeb !== '' && !isNaN(Number(pDeb))) totalCalculado += (brutoDebito * Number(pDeb)) / 100;
-    if (pPix !== '' && !isNaN(Number(pPix))) totalCalculado += (brutoPix * Number(pPix)) / 100;
+  function calcularValorComPorcentagens(tot: string, cred: string, deb: string, pix: string) {
+    const pTot = Number(tot || 0);
+    const pCred = Number(cred || 0);
+    const pDeb = Number(deb || 0);
+    const pPix = Number(pix || 0);
 
-    if (totalCalculado > 0) setValorDespesa(totalCalculado.toFixed(2));
+    let calculatedValor = 0;
+
+    if (pTot > 0) {
+      const brutoTotal = (dadosRelatorio?.bruto_dinheiro || 0) + (dadosRelatorio?.bruto_credito || 0) + (dadosRelatorio?.bruto_debito || 0) + (dadosRelatorio?.bruto_pix || 0);
+      calculatedValor = (brutoTotal * pTot) / 100;
+    } else if (pCred > 0) {
+      const brutoCred = dadosRelatorio?.bruto_credito || 0;
+      calculatedValor = (brutoCred * pCred) / 100;
+    } else if (pDeb > 0) {
+      const brutoDeb = dadosRelatorio?.bruto_debito || 0;
+      calculatedValor = (brutoDeb * pDeb) / 100;
+    } else if (pPix > 0) {
+      const brutoPixVal = dadosRelatorio?.bruto_pix || 0;
+      calculatedValor = (brutoPixVal * pPix) / 100;
+    }
+
+    if (calculatedValor > 0) {
+      setValorDespesa(calculatedValor.toFixed(2));
+    }
   }
 
   function handlePorcentagemTotalChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -555,14 +604,35 @@ export default function RelatoriosPage() {
   async function handleSalvarDespesa(e: React.FormEvent) {
     e.preventDefault();
     if (isPeriodoPassado) return;
-    if (!descricaoDespesa || !valorDespesa) return;
+    if (!descricaoDespesa) return;
+
+    // Detecta automaticamente qual tipo foi preenchido com base nos inputs do modal
+    let tipoBase = 'FIXO';
+    let percentualValor = 0;
+    const valorFinal = Number(valorDespesa || 0);
+
+    if (porcentagemCredito && Number(porcentagemCredito) > 0) {
+      tipoBase = 'CREDITO';
+      percentualValor = Number(porcentagemCredito);
+    } else if (porcentagemDebito && Number(porcentagemDebito) > 0) {
+      tipoBase = 'DEBITO';
+      percentualValor = Number(porcentagemDebito);
+    } else if (porcentagemPix && Number(porcentagemPix) > 0) {
+      tipoBase = 'PIX';
+      percentualValor = Number(porcentagemPix);
+    } else if (porcentagemTotal && Number(porcentagemTotal) > 0) {
+      tipoBase = 'TOTAL';
+      percentualValor = Number(porcentagemTotal);
+    }
 
     setSalvandoDespesa(true);
     try {
       if (despesaEmEdicaoId) {
         await atualizarDespesaProfissional(despesaEmEdicaoId, {
           descricao: descricaoDespesa,
-          valor: Number(valorDespesa)
+          valor: valorFinal,
+          percentual: percentualValor,
+          tipo_base: tipoBase
         });
       } else {
         await salvarDespesaProfissional({
@@ -570,7 +640,9 @@ export default function RelatoriosPage() {
           mes: mes ?? hoje.getMonth() + 1,
           ano: ano ?? hoje.getFullYear(),
           descricao: descricaoDespesa,
-          valor: Number(valorDespesa)
+          valor: valorFinal,
+          percentual: percentualValor,
+          tipo_base: tipoBase
         });
       }
 
@@ -591,29 +663,29 @@ export default function RelatoriosPage() {
   }
 
   async function handleExcluir(id: number) {
-  if (isPeriodoPassado) return;
+    if (isPeriodoPassado) return;
 
-  toast('Deseja realmente excluir esta despesa?', {
-    description: 'Esta ação não poderá ser desfeita.',
-    action: {
-      label: 'Sim, excluir',
-      onClick: async () => {
-        try {
-          await deletarDespesaProfissional(id);
-          toast.success('Despesa removida com sucesso!');
-          await buscarRelatorio();
-        } catch (err: any) {
-          const mensagemErro = err.response?.data?.error || err.message || 'Erro ao remover despesa.';
-          toast.error(mensagemErro);
-        }
+    toast('Deseja realmente excluir esta despesa?', {
+      description: 'Esta ação não poderá ser desfeita.',
+      action: {
+        label: 'Sim, excluir',
+        onClick: async () => {
+          try {
+            await deletarDespesaProfissional(id);
+            toast.success('Despesa removida com sucesso!');
+            await buscarRelatorio();
+          } catch (err: any) {
+            const mensagemErro = err.response?.data?.error || err.message || 'Erro ao remover despesa.';
+            toast.error(mensagemErro);
+          }
+        },
       },
-    },
-    cancel: {
-      label: 'Cancelar',
-      onClick: () => {},
-    },
-  });
-}
+      cancel: {
+        label: 'Cancelar',
+        onClick: () => { },
+      },
+    });
+  }
 
   function formatarMoeda(valor: number) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
@@ -1211,7 +1283,14 @@ export default function RelatoriosPage() {
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-purple-600 mb-1">% Crédito</label>
-                    <input type="number" step="0.01" value={porcentagemCredito} onChange={handlePorcentagemCreditoChange} className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white" placeholder="0" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={porcentagemCredito}
+                      onChange={handlePorcentagemCreditoChange}
+                      className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                      placeholder="0"
+                    />
                   </div>
                 </div>
 

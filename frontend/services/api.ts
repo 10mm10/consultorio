@@ -254,11 +254,26 @@ export async function excluirDespesa(id: number) {
   return data;
 }
 
-export async function salvarDespesaProfissional(dados: { profissional_id: number; mes: number; ano: number; descricao: string; valor: number }) {
-  const response = await fetch(`${API_URL}/relatorios/despesas`, {
+export async function salvarDespesaProfissional(dados: { 
+  profissional_id: number; 
+  mes: number; 
+  ano: number; 
+  descricao: string; 
+  valor: number; 
+  percentual?: number; 
+  tipo_base?: string; 
+  data?: string 
+}) {
+  // Garante uma data padrão caso venha vazia (ex: dia 01 do mês selecionado)
+  const payload = {
+    ...dados,
+    data: dados.data || `${dados.ano}-${String(dados.mes).padStart(2, '0')}-01`
+  };
+
+  const response = await fetch(`${API_URL}/despesas`, {
     method: 'POST',
     headers: getAuthHeader(),
-    body: JSON.stringify(dados)
+    body: JSON.stringify(payload)
   });
   
   const data = await response.json();
@@ -266,8 +281,17 @@ export async function salvarDespesaProfissional(dados: { profissional_id: number
   return data;
 }
 
-export async function atualizarDespesaProfissional(id: number, dados: { descricao: string; valor: number }) {
-  const response = await fetch(`${API_URL}/relatorios/despesas/${id}`, {
+export async function atualizarDespesaProfissional(id: number, dados: { 
+  descricao: string; 
+  valor: number; 
+  percentual?: number; 
+  tipo_base?: string; 
+  data?: string;
+  mes?: number;
+  ano?: number;
+  profissional_id?: number;
+}) {
+  const response = await fetch(`${API_URL}/despesas/${id}`, {
     method: 'PUT',
     headers: getAuthHeader(),
     body: JSON.stringify(dados)
@@ -279,7 +303,7 @@ export async function atualizarDespesaProfissional(id: number, dados: { descrica
 }
 
 export async function deletarDespesaProfissional(id: number) {
-  const response = await fetch(`${API_URL}/relatorios/despesas/${id}`, {
+  const response = await fetch(`${API_URL}/despesas/${id}`, {
     method: 'DELETE',
     headers: getAuthHeader()
   });
